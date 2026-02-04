@@ -205,3 +205,9 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+
+data/web_chats/Tugas*
+
+data/tts_cache/
+*.mp3

@@ -1,0 +1,272 @@
+import gradio as gr
+from config import WEB_CHATS_DIR, RP_CHATS_DIR, CHARACTERS_DIR, MEMORY_WEB_DIR, MEMORY_RP_DIR
+from file_utils import *
+from backend_logic import *
+
+def create_chat_input_interface(placeholder="Ketik pesan Anda atau unggah file..."):
+    with gr.Row():
+        user_input = gr.Textbox(show_label=False, placeholder=placeholder, scale=4, container=False)
+        file_upload = gr.File(label=" 📁  Unggah File", file_count="single", scale=1)
+    with gr.Row():
+        send_button = gr.Button("Kirim Pesan", variant="primary", visible=True)
+        send_vision = gr.Button(" 🖼️  Kirim Gambar+Teks (AI Vision)", variant="secondary", visible=False)
+        send_ocr = gr.Button(" 📄  Baca Teks dari Gambar", variant="secondary", visible=False)
+        send_doc = gr.Button(" 📄  Kirim Dokumen+Teks", variant="secondary", visible=False)
+    
+    def handle_file_upload(file_obj):
+        if file_obj is None: return gr.update(visible=True), gr.update(visible=False), gr.update(visible=False), gr.update(visible=False)
+        filename = file_obj.name.lower()
+        if filename.endswith(('.png', '.jpg', '.jpeg', '.bmp', '.webp')):
+            return gr.update(visible=False), gr.update(visible=True), gr.update(visible=True), gr.update(visible=False)
+        elif filename.endswith(('.pdf', '.docx', '.txt')):
+            return gr.update(visible=False), gr.update(visible=False), gr.update(visible=False), gr.update(visible=True)
+        else: return gr.update(visible=True), gr.update(visible=False), gr.update(visible=False), gr.update(visible=False)
+    
+    file_upload.upload(handle_file_upload, file_upload, [send_button, send_vision, send_ocr, send_doc], show_progress="hidden")
+    file_upload.clear(handle_file_upload, file_upload, [send_button, send_vision, send_ocr, send_doc], show_progress="hidden")
+    
+    return user_input, file_upload, send_button, send_vision, send_ocr, send_doc
+
+def create_ui():
+    with gr.Blocks(theme=gr.themes.Soft(primary_hue="blue", secondary_hue="sky"), title="Advanced AI Chat") as demo:
+        gr.Markdown("#  🤖  Advanced AI Chat Interface (Modular)")
+        system_prompt_web_state = gr.State(
+            "Anda adalah asisten AI yang ramah dan membantu.\n"
+            "PENTING: Setiap kali Anda menulis rumus atau notasi matematika, Anda HARUS mengapitnya dengan simbol dolar. "
+            "Gunakan $...$ untuk rumus sebaris dan $$...$$ untuk rumus blok."
+        )
+        
+        with gr.Tabs():
+            with gr.TabItem("Chat + Akses Web"):
+                with gr.Row():
+                    with gr.Column(scale=1):
+                        gr.Markdown("#### Manajemen Sesi")
+                        chat_name_web = gr.Textbox(label="Nama Sesi", placeholder="Otomatis...")
+                        with gr.Row(): 
+                            save_chat_web = gr.Button(" 💾  Simpan")
+                            load_chat_web = gr.Button(" 📂  Muat")
+                            delete_chat_web = gr.Button(" 🗑️  Hapus")
+                        chat_list_web = gr.Dropdown(label="Pilih Sesi Tersimpan", choices=[], allow_custom_value=True)
+                        status_web = gr.Markdown("")
+                        
+                        with gr.Accordion("🧠 Memori Jangka Panjang (Web)", open=False):
+                            memory_web_box = gr.Textbox(label="Isi Memori", lines=10, interactive=False)
+                            memory_web_input = gr.Textbox(label="Tambah Fakta ke Memori", placeholder="misal: nama saya Budi")
+                            with gr.Row():
+                                add_mem_web_btn = gr.Button("Simpan Fakta")
+                                clear_mem_web_btn = gr.Button("Hapus Memori")
+                            auto_mem_web_check = gr.Checkbox(label="Update Memori Otomatis", info="AI akan mencoba menyimpan fakta penting dari setiap percakapan.")
+
+                    with gr.Column(scale=3):
+                        chatbot_web = gr.Chatbot(height=500, label="Chat Web", type="messages")
+                        user_input_web, file_upload_web, send_button_web, send_vision_web, send_ocr_web, send_doc_web = create_chat_input_interface(
+                            placeholder="Ketik topik pencarian atau tempel URL YouTube..."
+                        )
+                        with gr.Row():
+                            search_engine_web = gr.Radio(["DuckDuckGo", "Google"], label="Mesin Pencari", value="DuckDuckGo")
+                            search_button_web = gr.Button(" 🔍  Cari di Web", variant="secondary")
+
+            with gr.TabItem("Chat Roleplay"):
+                with gr.Row():
+                    with gr.Column(scale=1):
+                        gr.Markdown("#### Manajemen Karakter")
+                        character_name = gr.Textbox(label="Nama Karakter", placeholder="misal: luna")
+                        character_list = gr.Dropdown(label="Pilih Karakter", choices=[], allow_custom_value=True)
+                        ai_persona_box = gr.Textbox(label="Deskripsi Karakter AI", lines=5, placeholder="Anda adalah AI yang...")
+                        user_persona_box = gr.Textbox(label="Deskripsi Peran Anda (Pengguna)", lines=3, placeholder="Saya adalah seorang petualang...")
+                        
+                        with gr.Row():
+                            save_char_btn = gr.Button(" 💾  Simpan Karakter")
+                            delete_char_btn = gr.Button(" 🗑️  Hapus Karakter")
+                        status_char = gr.Markdown("")
+                        
+                        pov_mode_rp = gr.Radio(
+                            ["Sudut Pandang Kedua (Interaktif)", "Sudut Pandang Ketiga (Naratif)"],
+                            label="Gaya Sudut Pandang", value="Sudut Pandang Kedua (Interaktif)"
+                        )
+                        
+                        gr.Markdown("--- \n#### Manajemen Sesi")
+                        chat_name_rp = gr.Textbox(label="Nama Sesi", placeholder="Otomatis...")
+                        with gr.Row(): 
+                            save_chat_rp = gr.Button(" 💾  Simpan")
+                            load_chat_rp = gr.Button(" 📂  Muat")
+                            delete_chat_rp = gr.Button(" 🗑️  Hapus")
+                        chat_list_rp = gr.Dropdown(label="Pilih Sesi Tersimpan", choices=[], allow_custom_value=True)
+                        status_rp = gr.Markdown("")
+                        
+                        with gr.Accordion("🧠 Memori Jangka Panjang (RP)", open=False):
+                            memory_rp_box = gr.Textbox(label="Isi Memori", lines=10, interactive=False)
+                            memory_rp_input = gr.Textbox(label="Tambah Fakta ke Memori", placeholder="misal: nama karakter saya adalah Elara")
+                            with gr.Row():
+                                add_mem_rp_btn = gr.Button("Simpan Fakta")
+                                clear_mem_rp_btn = gr.Button("Hapus Memori")
+                            auto_mem_rp_check = gr.Checkbox(label="Update Memori Otomatis", info="AI akan mencoba menyimpan fakta penting dari setiap percakapan.")
+                            
+                    with gr.Column(scale=3):
+                        chatbot_rp = gr.Chatbot(height=500, label="Chat Roleplay", type="messages")
+                        user_input_rp, file_upload_rp, send_button_rp, send_vision_rp, send_ocr_rp, send_doc_rp = create_chat_input_interface()
+                        
+                        with gr.Accordion("🎙️ Kontrol Suara (Eksperimental)", open=False):
+                            with gr.Row():
+                                audio_input_rp = gr.Audio(sources=["microphone"], type="filepath", label="Kirim Pesan Suara")
+                                auto_tts_rp_check = gr.Checkbox(label="Putar Suara Otomatis", info="Baca respons AI secara otomatis setelah dibuat.")
+                            audio_output_rp = gr.Audio(label="Respons Suara AI", autoplay=True, visible=True, interactive=False)
+
+            with gr.TabItem("Konfigurasi"):
+                with gr.Accordion("Pengaturan API & Fitur", open=True):
+                    api_key_box = gr.Textbox(label="OpenRouter API Key", type="password")
+                    model_name_box = gr.Textbox(label="Nama Model di OpenRouter")
+                    search_results_slider = gr.Slider(minimum=1, maximum=15, value=5, step=1, label="Jumlah Hasil Pencarian Web")
+                    save_settings_btn = gr.Button(" 💾  Simpan Pengaturan", variant="primary")
+                    status_settings = gr.Markdown("")
+                with gr.Accordion("Pengaturan Tampilan", open=True):
+                    gr.Markdown(
+                        """
+                        ### Pilih Tema Tampilan
+                        - <a href="?__theme=soft" style="text-decoration: none;"> ⚪  Tema Terang (Soft)</a>
+                        - <a href="?__theme=dark" style="text-decoration: none;"> ⚫  Tema Gelap (Dark)</a>
+                        """
+                    )
+        
+        # --- Kumpulan State ---
+        web_memory_state = gr.State(load_memory("web_default.txt"))
+        rp_memory_state = gr.State(load_memory("rp_default.txt"))
+        
+        # --- Kumpulan Wrapper & Event Handler ---
+        def web_chat_wrapper(user_input, history, memory):
+            yield from process_chat(user_input, history, system_prompt_web_state.value, memory)
+        
+        def web_search_wrapper(user_input, history, search_engine, memory, auto_mem):
+            final_history = None
+            # Pastikan wrapper ini hanya meng-yield 2 nilai
+            for chat_update, input_update in process_user_web_search(user_input, history, search_engine, memory):
+                final_history = chat_update
+                yield chat_update, gr.update(value=memory) # Kirim update memori kosong sementara
+            
+            if auto_mem and final_history:
+                new_memory = update_memory_automatically(final_history, "web_default.txt")
+                web_memory_state.value = new_memory
+                yield gr.update(value=final_history), gr.update(value=new_memory)
+
+        def web_file_wrapper(user_input, history, file_obj, mode, memory):
+            yield from process_chat_with_file(user_input, history, file_obj, mode, system_prompt_web_state.value, memory)
+            
+        def rp_chat_wrapper(user_input, history, ai_persona, user_persona, pov, memory, auto_mem, auto_tts):
+            final_system_prompt, _ = build_rp_prompt(ai_persona, user_persona, pov, memory)
+            final_history = None
+            audio_update = gr.update()
+
+            for chat_update, input_update in process_chat(user_input, history, final_system_prompt, memory):
+                final_history = chat_update
+                yield chat_update, input_update, audio_update, gr.update()
+            
+            if auto_tts and final_history:
+                last_response = get_last_ai_response(final_history)
+                audio_file = text_to_speech(last_response)
+                audio_update = gr.update(value=audio_file)
+
+            if auto_mem and final_history:
+                new_memory = update_memory_automatically(final_history, "rp_default.txt")
+                rp_memory_state.value = new_memory
+                yield final_history, gr.update(), audio_update, gr.update(value=new_memory)
+            else:
+                yield final_history, gr.update(), audio_update, gr.update()
+        
+        def load_chat_wrapper(chat_name, directory):
+            history, status = load_chat_history(chat_name, directory)
+            return history, status, chat_name
+
+        def delete_chat_wrapper(chat_name, directory):
+            status, chat_list_update = delete_chat_history(chat_name, directory)
+            return status, chat_list_update, ""
+
+        def on_load():
+            api_key_val, model_name_val, search_count_val = load_settings()
+            web_chats, rp_chats, chars = list_files_in_dir(WEB_CHATS_DIR), list_files_in_dir(RP_CHATS_DIR), list_files_in_dir(CHARACTERS_DIR)
+            return (
+                api_key_val, model_name_val, search_count_val, 
+                gr.update(choices=web_chats), gr.update(choices=rp_chats), gr.update(choices=chars),
+                web_memory_state.value, rp_memory_state.value
+            )
+        
+        demo.load(on_load, None, [
+            api_key_box, model_name_box, search_results_slider, 
+            chat_list_web, chat_list_rp, character_list,
+            memory_web_box, memory_rp_box
+        ])
+
+        save_settings_btn.click(save_settings, [api_key_box, model_name_box, search_results_slider], [status_settings, api_key_box, model_name_box, search_results_slider])
+        
+        # --- Event Handlers untuk Chat Web ---
+        send_button_web.click(web_chat_wrapper, [user_input_web, chatbot_web, web_memory_state], [chatbot_web, user_input_web])
+        user_input_web.submit(web_chat_wrapper, [user_input_web, chatbot_web, web_memory_state], [chatbot_web, user_input_web])
+        search_button_web.click(web_search_wrapper, [user_input_web, chatbot_web, search_engine_web, web_memory_state, auto_mem_web_check], [chatbot_web, memory_web_box])
+
+        outputs_web_file = [chatbot_web, user_input_web, file_upload_web, send_button_web, send_vision_web, send_ocr_web, send_doc_web]
+        send_vision_web.click(lambda u, h, f, m: web_file_wrapper(u, h, f, "vision", m), [user_input_web, chatbot_web, file_upload_web, web_memory_state], outputs_web_file)
+        send_ocr_web.click(lambda u, h, f, m: web_file_wrapper(u, h, f, "ocr", m), [user_input_web, chatbot_web, file_upload_web, web_memory_state], outputs_web_file)
+        send_doc_web.click(lambda u, h, f, m: web_file_wrapper(u, h, f, "doc", m), [user_input_web, chatbot_web, file_upload_web, web_memory_state], outputs_web_file)
+
+        save_chat_web.click(lambda h, n: save_chat_history(h, n, WEB_CHATS_DIR, "web_chat"), [chatbot_web, chat_name_web], [status_web, chat_list_web])
+        chat_list_web.select(lambda n: load_chat_wrapper(n, WEB_CHATS_DIR), chat_list_web, [chatbot_web, status_web, chat_name_web])
+        load_chat_web.click(lambda n: load_chat_wrapper(n, WEB_CHATS_DIR), chat_name_web, [chatbot_web, status_web, chat_name_web])
+        delete_chat_web.click(lambda n: delete_chat_wrapper(n, WEB_CHATS_DIR), chat_list_web, [status_web, chat_list_web, chat_name_web])
+
+        add_mem_web_btn.click(lambda i: (add_to_memory("web_default.txt", i), load_memory("web_default.txt")), memory_web_input, [status_web, memory_web_box]).then(lambda: "", None, memory_web_input)
+        clear_mem_web_btn.click(lambda: (clear_memory("web_default.txt"), ""), None, [status_web, memory_web_box])
+        
+        # --- Event Handlers untuk Chat Roleplay ---
+        send_button_rp.click(rp_chat_wrapper, [user_input_rp, chatbot_rp, ai_persona_box, user_persona_box, pov_mode_rp, rp_memory_state, auto_mem_rp_check, auto_tts_rp_check], [chatbot_rp, user_input_rp, audio_output_rp, memory_rp_box])
+        user_input_rp.submit(rp_chat_wrapper, [user_input_rp, chatbot_rp, ai_persona_box, user_persona_box, pov_mode_rp, rp_memory_state, auto_mem_rp_check, auto_tts_rp_check], [chatbot_rp, user_input_rp, audio_output_rp, memory_rp_box])
+
+        save_char_btn.click(save_character, [ai_persona_box, user_persona_box, character_name], [status_char, character_list, character_name])
+        # --- PERBAIKAN: Memastikan event ini sesuai dengan 4 output yang diharapkan ---
+        character_list.select(load_character, character_list, [ai_persona_box, user_persona_box, status_char, character_name])
+        delete_char_btn.click(delete_character, character_list, [status_char, character_list, character_name, ai_persona_box, user_persona_box])
+
+        save_chat_rp.click(lambda h, n: save_chat_history(h, n, RP_CHATS_DIR, "rp_chat"), [chatbot_rp, chat_name_rp], [status_rp, chat_list_rp])
+        chat_list_rp.select(lambda n: load_chat_wrapper(n, RP_CHATS_DIR), chat_list_rp, [chatbot_rp, status_rp, chat_name_rp])
+        load_chat_rp.click(lambda n: load_chat_wrapper(n, RP_CHATS_DIR), chat_name_rp, [chatbot_rp, status_rp, chat_name_rp])
+        delete_chat_rp.click(lambda n: delete_chat_wrapper(n, RP_CHATS_DIR), chat_list_rp, [status_rp, chat_list_rp, chat_name_rp])
+
+        add_mem_rp_btn.click(lambda i: (add_to_memory("rp_default.txt", i), load_memory("rp_default.txt")), memory_rp_input, [status_rp, memory_rp_box]).then(lambda: "", None, memory_rp_input)
+        clear_mem_rp_btn.click(lambda: (clear_memory("rp_default.txt"), ""), None, [status_rp, memory_rp_box])
+        
+        audio_input_rp.change(speech_to_text, audio_input_rp, user_input_rp)
+        
+    return demo
+
+def get_last_ai_response(chat_history):
+    if not chat_history: return ""
+    last_entry = chat_history[-1]
+    if last_entry and last_entry.get('role') == 'assistant':
+        content = last_entry.get('content', '')
+        return content
+    return ""
+
+def build_rp_prompt(ai_persona, user_persona, pov_mode, memory_content):
+    """Membangun system prompt final untuk roleplay."""
+    pov_instructions = {
+        "Sudut Pandang Kedua (Interaktif)": """
+---
+ATURAN SUDUT PANDANG KEDUA (UNTUK AI):
+- PERAN ANDA: Anda adalah karakter yang dideskripsikan di atas.
+- PERAN PENGGUNA: Pengguna adalah karakter yang dideskripsikan di atas.
+- INTERAKSI: Bicaralah LANGSUNG KEPADA pengguna menggunakan kata 'Anda' atau 'kamu'. Deskripsikan dunia dan aksi dari sudut pandang orang pertama ('Saya melihat...', 'Aku merasakan...'). Fokus pada pengalaman interaktif pengguna.
+""",
+        "Sudut Pandang Ketiga (Naratif)": """
+---
+ATURAN SUDUT PANDANG KETIGA (UNTUK AI):
+- PERAN ANDA: Anda adalah Narator atau Game Master (GM) yang juga mengontrol karakter AI.
+- PERAN PENGGUNA: Pengguna mengontrol karakternya sendiri.
+- INTERAKSI: Deskripsikan semua aksi (baik aksi Anda maupun aksi pengguna) dari sudut pandang orang ketiga. JANGAN PERNAH menggunakan kata 'Anda' atau 'kamu'. Sebut pengguna sebagai 'dia' atau dengan nama karakternya. Tulis balasan seperti sebuah cerita kolaboratif.
+"""
+    }
+    
+    full_persona = f"DESKRIPSI KARAKTER AI (PERAN ANDA):\n{ai_persona}\n\nDESKRIPSI KARAKTER PENGGUNA (PERAN SAYA):\n{user_persona}"
+    final_prompt = full_persona + "\n" + pov_instructions.get(pov_mode, "")
+    
+    final_prompt_with_memory = build_prompt_with_memory(final_prompt, memory_content)
+    
+    return final_prompt_with_memory, full_persona
+
